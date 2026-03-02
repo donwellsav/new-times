@@ -72,6 +72,10 @@ export function SpectrumCanvas({ spectrumRef, spectrum, advisories, isRunning, g
 
     // Read from ref if available (bypasses React state, no re-render needed)
     const currentSpectrum = spectrumRef?.current ?? spectrum
+
+    // Reset transform before scaling — without this, ctx.scale accumulates on
+    // every RAF tick and the graph drifts/zooms away over time.
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
     ctx.clearRect(0, 0, width, height)
 
@@ -113,8 +117,8 @@ export function SpectrumCanvas({ spectrumRef, spectrum, advisories, isRunning, g
     ctx.stroke()
 
     // Draw noise floor
-    if (spectrum?.noiseFloorDb !== null && spectrum?.noiseFloorDb !== undefined) {
-      const floorY = ((RTA_DB_MAX - spectrum.noiseFloorDb) / (RTA_DB_MAX - RTA_DB_MIN)) * plotHeight
+    if (currentSpectrum?.noiseFloorDb !== null && currentSpectrum?.noiseFloorDb !== undefined) {
+      const floorY = ((RTA_DB_MAX - currentSpectrum.noiseFloorDb) / (RTA_DB_MAX - RTA_DB_MIN)) * plotHeight
       ctx.strokeStyle = VIZ_COLORS.NOISE_FLOOR
       ctx.lineWidth = 1
       ctx.setLineDash([4, 4])
@@ -126,9 +130,9 @@ export function SpectrumCanvas({ spectrumRef, spectrum, advisories, isRunning, g
     }
 
     // Draw spectrum
-    if (spectrum?.freqDb && spectrum.sampleRate && spectrum.fftSize) {
-      const freqDb = spectrum.freqDb
-      const hzPerBin = spectrum.sampleRate / spectrum.fftSize
+    if (currentSpectrum?.freqDb && currentSpectrum.sampleRate && currentSpectrum.fftSize) {
+      const freqDb = currentSpectrum.freqDb
+      const hzPerBin = currentSpectrum.sampleRate / currentSpectrum.fftSize
       const n = freqDb.length
 
       // Gradient fill
