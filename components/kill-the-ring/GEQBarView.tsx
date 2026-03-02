@@ -3,7 +3,7 @@
 import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { useAnimationFrame } from '@/hooks/useAnimationFrame'
 import { ISO_31_BANDS } from '@/lib/dsp/constants'
-import { getSeverityColor } from '@/lib/dsp/eqAdvisor'
+import { getSeverityColor, resolveCSSColor } from '@/lib/dsp/eqAdvisor'
 import type { Advisory } from '@/types/advisory'
 
 interface GEQBarViewProps {
@@ -27,7 +27,7 @@ export function GEQBarView({ advisories, graphFontSize = 11 }: GEQBarViewProps) 
       if (!existing || advisory.advisory.geq.suggestedDb < existing.suggestedDb) {
         map.set(bandIndex, {
           suggestedDb: advisory.advisory.geq.suggestedDb,
-          color: getSeverityColor(advisory.severity),
+          color: resolveCSSColor(getSeverityColor(advisory.severity)),
           freq: advisory.trueFrequencyHz,
           clusterCount: existing ? existing.clusterCount + advisoryCluster : advisoryCluster,
         })

@@ -4,7 +4,7 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import Image from 'next/image'
 import { useAnimationFrame } from '@/hooks/useAnimationFrame'
 import { freqToLogPosition, clamp } from '@/lib/utils/mathHelpers'
-import { getSeverityColor } from '@/lib/dsp/eqAdvisor'
+import { getSeverityColor, resolveCSSColor } from '@/lib/dsp/eqAdvisor'
 import { formatFrequency } from '@/lib/utils/pitchUtils'
 import { CANVAS_SETTINGS, VIZ_COLORS } from '@/lib/dsp/constants'
 import type { SpectrumData, Advisory } from '@/types/advisory'
@@ -188,7 +188,7 @@ export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize 
       const db = advisory.trueAmplitudeDb
       const x = freqToLogPosition(freq, RTA_FREQ_MIN, RTA_FREQ_MAX) * plotWidth
       const y = ((RTA_DB_MAX - clamp(db, RTA_DB_MIN, RTA_DB_MAX)) / (RTA_DB_MAX - RTA_DB_MIN)) * plotHeight
-      const color = getSeverityColor(advisory.severity)
+      const color = resolveCSSColor(getSeverityColor(advisory.severity))
 
       // Vertical line
       ctx.strokeStyle = color

@@ -375,16 +375,31 @@ export function getGEQBandLabels(): string[] {
 }
 
 /**
- * Get color for severity level
+ * Resolve a CSS variable color string (e.g. "var(--severity-runaway)") to its
+ * computed hex/rgb value so it can be used as a Canvas fillStyle/strokeStyle.
+ * Falls back to the input string if resolution fails (e.g. during SSR).
+ */
+export function resolveCSSColor(cssVar: string): string {
+  if (typeof window === 'undefined') return cssVar
+  const match = cssVar.match(/var\((--[^)]+)\)/)
+  if (!match) return cssVar
+  return getComputedStyle(document.documentElement).getPropertyValue(match[1]).trim() || cssVar
+}
+
+/**
+ * Get color for severity level.
+ * Returns CSS variable references so the output always respects the active
+ * theme defined in globals.css (--severity-* tokens) rather than
+ * hard-coded hex values that bypass the design system.
  */
 export function getSeverityColor(severity: SeverityLevel): string {
   switch (severity) {
-    case 'RUNAWAY': return '#ef4444' // red-500
-    case 'GROWING': return '#f97316' // orange-500
-    case 'RESONANCE': return '#eab308' // yellow-500
-    case 'POSSIBLE_RING': return '#a855f7' // purple-500
-    case 'WHISTLE': return '#06b6d4' // cyan-500
-    case 'INSTRUMENT': return '#22c55e' // green-500
-    default: return '#6b7280' // gray-500
+    case 'RUNAWAY':      return 'var(--severity-runaway)'
+    case 'GROWING':      return 'var(--severity-growing)'
+    case 'RESONANCE':    return 'var(--severity-resonance)'
+    case 'POSSIBLE_RING': return 'var(--severity-ring)'
+    case 'WHISTLE':      return 'var(--severity-whistle)'
+    case 'INSTRUMENT':   return 'var(--severity-instrument)'
+    default:             return 'var(--muted-foreground)'
   }
 }
