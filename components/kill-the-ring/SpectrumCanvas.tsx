@@ -10,6 +10,9 @@ import { CANVAS_SETTINGS, VIZ_COLORS } from '@/lib/dsp/constants'
 import type { SpectrumData, Advisory } from '@/types/advisory'
 
 interface SpectrumCanvasProps {
+  /** Direct ref to latest spectrum — read inside RAF without triggering re-renders */
+  spectrumRef?: React.MutableRefObject<SpectrumData | null>
+  /** spectrum state prop kept for SSR/placeholder logic only */
   spectrum: SpectrumData | null
   advisories: Advisory[]
   isRunning: boolean
@@ -18,7 +21,7 @@ interface SpectrumCanvasProps {
 
 const FREQ_LABELS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
 
-export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize = 11 }: SpectrumCanvasProps) {
+export function SpectrumCanvas({ spectrumRef, spectrum, advisories, isRunning, graphFontSize = 11 }: SpectrumCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const dimensionsRef = useRef({ width: 0, height: 0 })
@@ -67,8 +70,8 @@ export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize 
     const { width, height } = dimensionsRef.current
     if (width === 0 || height === 0) return
 
-    // Clear
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    // Read from ref if available (bypasses React state, no re-render needed)
+    const currentSpectrum = spectrumRef?.current ?? spectrum
     ctx.scale(dpr, dpr)
     ctx.clearRect(0, 0, width, height)
 
@@ -249,7 +252,8 @@ export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize 
 
   }, [spectrum, advisories, graphFontSize])
 
-  useAnimationFrame(render, isRunning || spectrum !== null)
+  // 24fps is plenty for spectrum display — halves GPU work vs 60fps
+  useAnimationFrame(render, isRunning || spectrum !== null, 24)
 
   return (
     <div ref={containerRef} className="relative w-full h-full">

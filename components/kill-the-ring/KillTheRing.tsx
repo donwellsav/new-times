@@ -36,6 +36,8 @@ const GRAPH_CHIPS: { value: GraphView; label: string }[] = [
 interface GraphPanelProps {
   activeGraph: GraphView
   onGraphChange: (v: GraphView) => void
+  spectrumRef: React.MutableRefObject<import('@/types/advisory').SpectrumData | null>
+  /** spectrum state is still needed for the statusLabel noiseFloor readout */
   spectrum: Parameters<typeof SpectrumCanvas>[0]['spectrum']
   advisories: Advisory[]
   isRunning: boolean
@@ -49,6 +51,7 @@ interface GraphPanelProps {
 const GraphPanel = memo(function GraphPanel({
   activeGraph,
   onGraphChange,
+  spectrumRef,
   spectrum,
   advisories,
   isRunning,
@@ -88,13 +91,13 @@ const GraphPanel = memo(function GraphPanel({
       </div>
       <div className={`relative flex-1 min-h-0 ${pointerEvents ? '' : 'pointer-events-none'}`}>
         <div className={`absolute inset-0 transition-opacity duration-200 ${activeGraph === 'rta' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
-          <SpectrumCanvas spectrum={spectrum} advisories={advisories} isRunning={isRunning} graphFontSize={graphFontSize} />
+          <SpectrumCanvas spectrumRef={spectrumRef} spectrum={spectrum} advisories={advisories} isRunning={isRunning && activeGraph === 'rta'} graphFontSize={graphFontSize} />
         </div>
         <div className={`absolute inset-0 transition-opacity duration-200 ${activeGraph === 'geq' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
-          <GEQBarView advisories={advisories} graphFontSize={graphFontSize} />
+          <GEQBarView advisories={activeGraph === 'geq' ? advisories : []} graphFontSize={graphFontSize} />
         </div>
         <div className={`absolute inset-0 transition-opacity duration-200 ${activeGraph === 'waterfall' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
-          <WaterfallCanvas spectrum={spectrum} isRunning={isRunning} graphFontSize={graphFontSize} />
+          <WaterfallCanvas spectrumRef={spectrumRef} spectrum={spectrum} isRunning={isRunning && activeGraph === 'waterfall'} graphFontSize={graphFontSize} />
         </div>
       </div>
     </>
@@ -115,6 +118,7 @@ export const KillTheRing = memo(function KillTheRingComponent() {
     sampleRate,
     fftSize,
     spectrum,
+    spectrumRef,
     advisories,
     settings,
     start,
@@ -699,6 +703,7 @@ export const KillTheRing = memo(function KillTheRingComponent() {
               <GraphPanel
                 activeGraph={activeGraph}
                 onGraphChange={setActiveGraph}
+                spectrumRef={spectrumRef}
                 spectrum={spectrum}
                 advisories={advisories}
                 isRunning={isRunning}
@@ -734,6 +739,7 @@ export const KillTheRing = memo(function KillTheRingComponent() {
               <GraphPanel
                 activeGraph={bottomLeftGraph}
                 onGraphChange={setBottomLeftGraph}
+                spectrumRef={spectrumRef}
                 spectrum={spectrum}
                 advisories={advisories}
                 isRunning={isRunning}
@@ -748,6 +754,7 @@ export const KillTheRing = memo(function KillTheRingComponent() {
               <GraphPanel
                 activeGraph={bottomRightGraph}
                 onGraphChange={setBottomRightGraph}
+                spectrumRef={spectrumRef}
                 spectrum={spectrum}
                 advisories={advisories}
                 isRunning={isRunning}

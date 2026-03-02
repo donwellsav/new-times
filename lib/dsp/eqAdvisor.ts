@@ -374,16 +374,25 @@ export function getGEQBandLabels(): string[] {
   })
 }
 
+// Cache resolved CSS variable values so getComputedStyle is only called once
+// per variable, not on every canvas frame for every advisory.
+const _cssColorCache = new Map<string, string>()
+
 /**
  * Resolve a CSS variable color string (e.g. "var(--severity-runaway)") to its
  * computed hex/rgb value so it can be used as a Canvas fillStyle/strokeStyle.
  * Falls back to the input string if resolution fails (e.g. during SSR).
+ * Results are cached — getComputedStyle is only called once per variable.
  */
 export function resolveCSSColor(cssVar: string): string {
   if (typeof window === 'undefined') return cssVar
+  const cached = _cssColorCache.get(cssVar)
+  if (cached) return cached
   const match = cssVar.match(/var\((--[^)]+)\)/)
   if (!match) return cssVar
-  return getComputedStyle(document.documentElement).getPropertyValue(match[1]).trim() || cssVar
+  const resolved = getComputedStyle(document.documentElement).getPropertyValue(match[1]).trim() || cssVar
+  _cssColorCache.set(cssVar, resolved)
+  return resolved
 }
 
 /**

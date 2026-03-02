@@ -8,6 +8,9 @@ import { CANVAS_SETTINGS } from '@/lib/dsp/constants'
 import type { SpectrumData } from '@/types/advisory'
 
 interface WaterfallCanvasProps {
+  /** Direct ref to latest spectrum — read inside RAF without triggering re-renders */
+  spectrumRef?: React.MutableRefObject<SpectrumData | null>
+  /** spectrum state prop kept for placeholder/isRunning logic */
   spectrum: SpectrumData | null
   isRunning: boolean
   graphFontSize?: number
@@ -15,7 +18,7 @@ interface WaterfallCanvasProps {
 
 const HISTORY_SIZE = 128
 
-export function WaterfallCanvas({ spectrum, isRunning, graphFontSize = 11 }: WaterfallCanvasProps) {
+export function WaterfallCanvas({ spectrumRef, spectrum, isRunning, graphFontSize = 11 }: WaterfallCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const dimensionsRef = useRef({ width: 0, height: 0 })
@@ -47,24 +50,22 @@ export function WaterfallCanvas({ spectrum, isRunning, graphFontSize = 11 }: Wat
     return () => observer.disconnect()
   }, [])
 
-  // Update history
+  // Update history — reads from spectrumRef for latest data without re-render dependency
   useEffect(() => {
-    if (!spectrum?.freqDb || !isRunning) return
-    if (spectrum.timestamp === lastSpectrumRef.current) return
-
-    lastSpectrumRef.current = spectrum.timestamp
-
-    // Add new spectrum to history
-    const copy = new Float32Array(spectrum.freqDb)
-    historyRef.current.push(copy)
-    frameTimesRef.current.push(Date.now())
-
-    // Limit history size
-    while (historyRef.current.length > HISTORY_SIZE) {
-      historyRef.current.shift()
-      frameTimesRef.current.shift()
-    }
-  }, [spectrum, isRunning])
+    if (!isRunning) return
+    const interval = setInterval(() => {
+      const data = spectrumRef?.current ?? spectrum
+      if (!data?.freqDb) return
+      const copy = new Float32Array(data.freqDb)
+      historyRef.current.push(copy)
+      frameTimesRef.current.push(Date.now())
+      while (historyRef.current.length > HISTORY_SIZE) {
+        historyRef.current.shift()
+        frameTimesRef.current.shift()
+      }
+    }, 100) // Sample history at 10fps — plenty for waterfall
+    return () => clearInterval(interval)
+  }, [isRunning, spectrumRef, spectrum])
 
   const render = useCallback(() => {
     const canvas = canvasRef.current
@@ -94,8 +95,8 @@ export function WaterfallCanvas({ spectrum, isRunning, graphFontSize = 11 }: Wat
 
     const { RTA_DB_MIN, RTA_DB_MAX, RTA_FREQ_MIN, RTA_FREQ_MAX } = CANVAS_SETTINGS
     
-    // Get current spectrum info for frequency mapping
-    const currentSpectrum = spectrum
+    // Use ref for latest data if available — no React re-render needed
+    const currentSpectrum = spectrumRef?.current ?? spectrum
     if (!currentSpectrum?.sampleRate || !currentSpectrum?.fftSize) {
       ctx.fillStyle = '#0a0a0a'
       ctx.fillRect(padding.left, padding.top, plotWidth, plotHeight)
@@ -205,7 +206,8 @@ export function WaterfallCanvas({ spectrum, isRunning, graphFontSize = 11 }: Wat
 
   }, [spectrum, graphFontSize])
 
-  useAnimationFrame(render, isRunning || historyRef.current.length > 0)
+  // 24fps is plenty for waterfall display — no need to burn GPU at 60fps
+  useAnimationFrame(render, isRunning || historyRef.current.length > 0, 24)
 
   const showPlaceholder = !isRunning && historyRef.current.length === 0
 
