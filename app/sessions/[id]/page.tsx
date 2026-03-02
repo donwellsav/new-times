@@ -6,24 +6,6 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { formatFrequency, formatDuration, formatDate } from '@/lib/utils/pitchUtils'
 
-function formatDuration(startedAt: string, endedAt: string | null): string {
-  if (!endedAt) return 'In progress'
-  const ms = new Date(endedAt).getTime() - new Date(startedAt).getTime()
-  const s = Math.floor(ms / 1000)
-  const m = Math.floor(s / 60)
-  const h = Math.floor(m / 60)
-  if (h > 0) return `${h}h ${m % 60}m`
-  if (m > 0) return `${m}m ${s % 60}s`
-  return `${s}s`
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
-
 const MODE_LABELS: Record<string, string> = {
   feedbackHunt: 'Feedback Hunt',
   vocalRing: 'Vocal Ring',
