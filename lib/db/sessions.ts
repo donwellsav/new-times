@@ -1,6 +1,10 @@
 import { neon } from '@neondatabase/serverless'
 
-const sql = neon(process.env.DATABASE_URL!)
+function getDb() {
+  const url = process.env.DATABASE_URL
+  if (!url) throw new Error('DATABASE_URL environment variable is not set')
+  return neon(url)
+}
 
 // ─── Session ─────────────────────────────────────────────────────────────────
 
@@ -19,6 +23,7 @@ export async function createSession(params: {
   mode: string
   fftSize: number
 }): Promise<Session> {
+  const sql = getDb()
   const rows = await sql`
     INSERT INTO sessions (id, mode, fft_size)
     VALUES (${params.id}, ${params.mode}, ${params.fftSize})
@@ -28,6 +33,7 @@ export async function createSession(params: {
 }
 
 export async function endSession(id: string): Promise<Session> {
+  const sql = getDb()
   const rows = await sql`
     UPDATE sessions
     SET ended_at = NOW()
@@ -38,6 +44,7 @@ export async function endSession(id: string): Promise<Session> {
 }
 
 export async function listSessions(limit = 50): Promise<Session[]> {
+  const sql = getDb()
   const rows = await sql`
     SELECT
       s.*,
@@ -52,10 +59,12 @@ export async function listSessions(limit = 50): Promise<Session[]> {
 }
 
 export async function deleteSession(id: string): Promise<void> {
+  const sql = getDb()
   await sql`DELETE FROM sessions WHERE id = ${id}`
 }
 
 export async function getSession(id: string): Promise<Session | null> {
+  const sql = getDb()
   const rows = await sql`
     SELECT
       s.*,
@@ -95,6 +104,7 @@ export async function bulkInsertEvents(
   }>,
 ): Promise<void> {
   if (events.length === 0) return
+  const sql = getDb()
 
   // Single multi-value INSERT — one round-trip regardless of batch size
   const rows = events.map((ev) => {
@@ -145,6 +155,7 @@ export async function bulkInsertEvents(
 }
 
 export async function getSessionEvents(sessionId: string): Promise<SessionEventRow[]> {
+  const sql = getDb()
   const rows = await sql`
     SELECT * FROM session_events
     WHERE session_id = ${sessionId}
@@ -183,6 +194,7 @@ function nearestIsoBand(hz: number): number {
 }
 
 export async function getSessionFrequencyStats(sessionId: string): Promise<FrequencyBin[]> {
+  const sql = getDb()
   const rows = await sql`
     SELECT frequency, amplitude, severity
     FROM session_events

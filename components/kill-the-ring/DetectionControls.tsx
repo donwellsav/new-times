@@ -1,5 +1,7 @@
 'use client'
 
+// DetectionControls - handles mode selection, frequency range, and threshold settings
+// v3.1 - Fixed nested button hydration error: SaveButton moved outside dropdown buttons as siblings
 import React, { useState, useEffect, useRef } from 'react'
 import { HelpCircle, ChevronDown, Download, X } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
@@ -8,6 +10,38 @@ import type { DetectorSettings, OperationMode } from '@/types/advisory'
 import { FREQ_RANGE_PRESETS, OPERATION_MODES } from '@/lib/dsp/constants'
 
 const STORAGE_PREFIX = 'ktr-setting-'
+
+interface SaveButtonProps {
+  settingKey: string
+  value: unknown
+  savedKeys: Set<string>
+  onSave: (key: string, value: unknown) => void
+  onClear: (key: string) => void
+}
+
+function SaveButton({ settingKey, value, savedKeys, onSave, onClear }: SaveButtonProps) {
+  const isSaved = savedKeys.has(settingKey)
+  return (
+    <div className="flex items-center gap-0.5 flex-shrink-0">
+      <button
+        onClick={(e) => { e.stopPropagation(); onSave(settingKey, value) }}
+        className="p-0.5 rounded hover:bg-muted/50 transition-colors"
+        title={isSaved ? 'Update saved default' : 'Save as default'}
+      >
+        <Download className={`w-3 h-3 ${isSaved ? 'text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}`} />
+      </button>
+      {isSaved && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClear(settingKey) }}
+          className="p-0.5 rounded hover:bg-muted/50 transition-colors"
+          title="Clear saved default"
+        >
+          <X className="w-3 h-3 text-muted-foreground/50 hover:text-destructive" />
+        </button>
+      )}
+    </div>
+  )
+}
 
 const MODE_INFO: Record<OperationMode, { label: string; desc: string }> = {
   feedbackHunt: { label: 'Feedback Hunt', desc: 'Balanced detection' },
@@ -65,30 +99,6 @@ export function DetectionControls({ settings, onModeChange, onSettingsChange }: 
     setSavedKeys((prev) => { const n = new Set(prev); n.delete(key); return n })
   }
 
-  const SaveButton = ({ settingKey, value }: { settingKey: string; value: unknown }) => {
-    const isSaved = savedKeys.has(settingKey)
-    return (
-      <div className="flex items-center gap-0.5 flex-shrink-0">
-        <button
-          onClick={(e) => { e.stopPropagation(); saveDefault(settingKey, value) }}
-          className="p-0.5 rounded hover:bg-muted/50 transition-colors"
-          title={isSaved ? 'Update saved default' : 'Save as default'}
-        >
-          <Download className={`w-3 h-3 ${isSaved ? 'text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}`} />
-        </button>
-        {isSaved && (
-          <button
-            onClick={(e) => { e.stopPropagation(); clearDefault(settingKey) }}
-            className="p-0.5 rounded hover:bg-muted/50 transition-colors"
-            title="Clear saved default"
-          >
-            <X className="w-3 h-3 text-muted-foreground/50 hover:text-destructive" />
-          </button>
-        )}
-      </div>
-    )
-  }
-
   const currentModeInfo = MODE_INFO[settings.mode]
   const currentFreqPreset = FREQ_RANGE_PRESETS.find(
     p => p.minFrequency === settings.minFrequency && p.maxFrequency === settings.maxFrequency
@@ -100,19 +110,19 @@ export function DetectionControls({ settings, onModeChange, onSettingsChange }: 
 
         {/* Mode selector */}
         <div className="relative" ref={modeRef}>
-          <button
-            onClick={() => { setModeOpen(!modeOpen); setFreqOpen(false) }}
-            className="w-full flex items-center justify-between px-2 py-1 rounded border border-border hover:border-primary/40 transition-colors"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-xs font-medium text-foreground truncate">{currentModeInfo.label}</span>
-              <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{currentModeInfo.desc}</span>
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <SaveButton settingKey="mode" value={settings.mode} />
-              <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${modeOpen ? 'rotate-180' : ''}`} />
-            </div>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { setModeOpen(!modeOpen); setFreqOpen(false) }}
+              className="flex-1 flex items-center justify-between px-2 py-1 rounded border border-border hover:border-primary/40 transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs font-medium text-foreground truncate">{currentModeInfo.label}</span>
+                <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">{currentModeInfo.desc}</span>
+              </div>
+              <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform flex-shrink-0 ${modeOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <SaveButton settingKey="mode" value={settings.mode} savedKeys={savedKeys} onSave={saveDefault} onClear={clearDefault} />
+          </div>
           {modeOpen && (
             <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-background border border-border rounded shadow-lg overflow-hidden">
               {(Object.keys(OPERATION_MODES) as OperationMode[]).map((mode) => {
@@ -143,21 +153,21 @@ export function DetectionControls({ settings, onModeChange, onSettingsChange }: 
 
         {/* Freq range */}
         <div className="relative" ref={freqRef}>
-          <button
-            onClick={() => { setFreqOpen(!freqOpen); setModeOpen(false) }}
-            className="w-full flex items-center justify-between px-2 py-1 rounded border border-border hover:border-primary/40 transition-colors"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-xs font-medium text-foreground">{currentFreqPreset.label}</span>
-              <span className="text-[10px] text-muted-foreground font-mono">
-                {currentFreqPreset.minFrequency}-{currentFreqPreset.maxFrequency}Hz
-              </span>
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <SaveButton settingKey="freqRange" value={{ minFrequency: settings.minFrequency, maxFrequency: settings.maxFrequency }} />
-              <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${freqOpen ? 'rotate-180' : ''}`} />
-            </div>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { setFreqOpen(!freqOpen); setModeOpen(false) }}
+              className="flex-1 flex items-center justify-between px-2 py-1 rounded border border-border hover:border-primary/40 transition-colors"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs font-medium text-foreground">{currentFreqPreset.label}</span>
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  {currentFreqPreset.minFrequency}-{currentFreqPreset.maxFrequency}Hz
+                </span>
+              </div>
+              <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform flex-shrink-0 ${freqOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <SaveButton settingKey="freqRange" value={{ minFrequency: settings.minFrequency, maxFrequency: settings.maxFrequency }} savedKeys={savedKeys} onSave={saveDefault} onClear={clearDefault} />
+          </div>
           {freqOpen && (
             <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-background border border-border rounded shadow-lg overflow-hidden">
               {FREQ_RANGE_PRESETS.map((preset) => {
@@ -206,7 +216,7 @@ export function DetectionControls({ settings, onModeChange, onSettingsChange }: 
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            <SaveButton settingKey="autoMusicAware" value={settings.autoMusicAware} />
+            <SaveButton settingKey="autoMusicAware" value={settings.autoMusicAware} savedKeys={savedKeys} onSave={saveDefault} onClear={clearDefault} />
             <button
               role="switch"
               aria-checked={settings.autoMusicAware}

@@ -25,6 +25,10 @@ const MODE_LABELS: Record<string, string> = {
   calibration: 'Calibration',
 }
 
+interface SessionsTableProps {
+  sessions: Session[]
+}
+
 function DeleteButton({ id }: { id: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
