@@ -100,9 +100,12 @@ export function DetectionControls({ settings, onModeChange, onSettingsChange }: 
 
         {/* Mode selector */}
         <div className="relative" ref={modeRef}>
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => { setModeOpen(!modeOpen); setFreqOpen(false) }}
-            className="w-full flex items-center justify-between px-2 py-1 rounded border border-border hover:border-primary/40 transition-colors"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModeOpen(!modeOpen); setFreqOpen(false) } }}
+            className="w-full flex items-center justify-between px-2 py-1 rounded border border-border hover:border-primary/40 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs font-medium text-foreground truncate">{currentModeInfo.label}</span>
@@ -112,7 +115,7 @@ export function DetectionControls({ settings, onModeChange, onSettingsChange }: 
               <SaveButton settingKey="mode" value={settings.mode} />
               <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${modeOpen ? 'rotate-180' : ''}`} />
             </div>
-          </button>
+          </div>
           {modeOpen && (
             <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-background border border-border rounded shadow-lg overflow-hidden">
               {(Object.keys(OPERATION_MODES) as OperationMode[]).map((mode) => {
@@ -143,9 +146,12 @@ export function DetectionControls({ settings, onModeChange, onSettingsChange }: 
 
         {/* Freq range */}
         <div className="relative" ref={freqRef}>
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => { setFreqOpen(!freqOpen); setModeOpen(false) }}
-            className="w-full flex items-center justify-between px-2 py-1 rounded border border-border hover:border-primary/40 transition-colors"
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFreqOpen(!freqOpen); setModeOpen(false) } }}
+            className="w-full flex items-center justify-between px-2 py-1 rounded border border-border hover:border-primary/40 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs font-medium text-foreground">{currentFreqPreset.label}</span>
@@ -157,7 +163,7 @@ export function DetectionControls({ settings, onModeChange, onSettingsChange }: 
               <SaveButton settingKey="freqRange" value={{ minFrequency: settings.minFrequency, maxFrequency: settings.maxFrequency }} />
               <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${freqOpen ? 'rotate-180' : ''}`} />
             </div>
-          </button>
+          </div>
           {freqOpen && (
             <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-background border border-border rounded shadow-lg overflow-hidden">
               {FREQ_RANGE_PRESETS.map((preset) => {
