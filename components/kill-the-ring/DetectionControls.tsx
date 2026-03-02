@@ -60,17 +60,18 @@ interface DetectionControlsProps {
 export function DetectionControls({ settings, onModeChange, onSettingsChange }: DetectionControlsProps) {
   const [modeOpen, setModeOpen] = useState(false)
   const [freqOpen, setFreqOpen] = useState(false)
-  const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set())
-  const modeRef = useRef<HTMLDivElement>(null)
-  const freqRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
+  const [savedKeys, setSavedKeys] = useState<Set<string>>(() => {
+    // Lazy initializer — runs once on mount, before first render, so saved
+    // indicators are correct immediately with no flash of unsaved state.
+    if (typeof window === 'undefined') return new Set()
     const keys = new Set<string>()
     Object.keys(localStorage).forEach((k) => {
       if (k.startsWith(STORAGE_PREFIX)) keys.add(k.replace(STORAGE_PREFIX, ''))
     })
-    setSavedKeys(keys)
-  }, [])
+    return keys
+  })
+  const modeRef = useRef<HTMLDivElement>(null)
+  const freqRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
