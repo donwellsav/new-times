@@ -31,6 +31,9 @@ export interface UseAudioAnalyzerReturn extends UseAudioAnalyzerState {
   updateSettings: (settings: Partial<DetectorSettings>) => void
   resetSettings: () => void
   settings: DetectorSettings
+  /** Direct ref to latest spectrum data — read by canvas components without
+   *  triggering React re-renders on every spectrum frame. */
+  spectrumRef: React.MutableRefObject<SpectrumData | null>
 }
 
 export function useAudioAnalyzer(
@@ -55,6 +58,12 @@ export function useAudioAnalyzer(
 
   const analyzerRef = useRef<AudioAnalyzer | null>(null)
   const settingsRef = useRef(settings)
+  // Spectrum is stored in a ref AND state. The ref is read by canvas components
+  // directly (no re-render), while state is updated at a throttled 100ms interval
+  // so the noiseFloorDb label in the UI stays fresh without a 30fps re-render.
+  const spectrumRef = useRef<SpectrumData | null>(null)
+  const lastSpectrumStateUpdateRef = useRef<number>(0)
+  const SPECTRUM_STATE_INTERVAL_MS = 100 // Update React state at 10fps max
   
   // Keep settings ref in sync
   useEffect(() => {
@@ -135,11 +144,20 @@ export function useAudioAnalyzer(
   useEffect(() => {
     const analyzer = createAudioAnalyzer(settings, {
       onSpectrum: (data) => {
-        setState(prev => ({ 
-          ...prev, 
-          spectrum: data,
-          noiseFloorDb: data.noiseFloorDb,
-        }))
+        // Always update the ref — canvas components read directly from this
+        // without going through React state to avoid 30fps re-renders.
+        spectrumRef.current = data
+        // Only update React state at 10fps max — just enough to keep the
+        // noiseFloorDb status label in the UI fresh.
+        const now = performance.now()
+        if (now - lastSpectrumStateUpdateRef.current >= SPECTRUM_STATE_INTERVAL_MS) {
+          lastSpectrumStateUpdateRef.current = now
+          setState(prev => ({
+            ...prev,
+            spectrum: data,
+            noiseFloorDb: data.noiseFloorDb,
+          }))
+        }
       },
       // Route raw peaks to the DSP worker
       onPeakDetected: (peak, spectrum, sampleRate, fftSize) => {
@@ -238,6 +256,7 @@ export function useAudioAnalyzer(
     stop,
     updateSettings,
     resetSettings,
+    spectrumRef,
   }
 }
 

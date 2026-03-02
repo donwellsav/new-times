@@ -41,7 +41,6 @@ export class AudioAnalyzer {
   private callbacks: AudioAnalyzerCallbacks
   private detector: FeedbackDetector
   
-  private rafId: number = 0
   private lastSpectrumTime: number = 0
   private spectrumIntervalMs: number = 33 // ~30fps for spectrum display
 
@@ -68,12 +67,36 @@ export class AudioAnalyzer {
       onPeakCleared: (peak) => {
         this.callbacks.onPeakCleared?.(peak)
       },
+      // Piggyback spectrum delivery onto the detector's own RAF tick.
+      // This eliminates the duplicate RAF loop that was running at 30fps
+      // on top of the detector's 50Hz loop — one RAF per frame, not two.
+      onRafTick: (timestamp) => {
+        if (timestamp - this.lastSpectrumTime >= this.spectrumIntervalMs) {
+          this.lastSpectrumTime = timestamp
+          const spectrum = this.detector.getSpectrum()
+          const state = this.detector.getState()
+          if (spectrum) {
+            let peak = -100
+            for (let i = 0; i < spectrum.length; i++) {
+              if (spectrum[i] > peak) peak = spectrum[i]
+            }
+            this.callbacks.onSpectrum?.({
+              freqDb: spectrum,
+              power: new Float32Array(0),
+              noiseFloorDb: state.noiseFloorDb,
+              effectiveThresholdDb: state.effectiveThresholdDb,
+              sampleRate: state.sampleRate,
+              fftSize: state.fftSize,
+              timestamp,
+              peak,
+            })
+          }
+        }
+      },
     })
 
     // Apply initial settings via the mapping layer (DetectorSettings → AnalysisConfig)
     this.detector.updateSettings(this.settings)
-
-    this.spectrumLoop = this.spectrumLoop.bind(this)
   }
 
   // ==================== Public API ====================
@@ -86,11 +109,7 @@ export class AudioAnalyzer {
       this._isRunning = true
       this._hasPermission = true
       this._error = null
-
-      // Start spectrum display loop
       this.lastSpectrumTime = 0
-      this.rafId = requestAnimationFrame(this.spectrumLoop)
-
       this.callbacks.onStateChange?.(true)
     } catch (err) {
       this._error = err instanceof Error ? err.message : 'Failed to start analyzer'
@@ -102,12 +121,6 @@ export class AudioAnalyzer {
 
   stop(options: { releaseMic?: boolean } = {}): void {
     this._isRunning = false
-
-    if (this.rafId) {
-      cancelAnimationFrame(this.rafId)
-      this.rafId = 0
-    }
-
     this.detector.stop(options)
     this.callbacks.onStateChange?.(false)
   }
@@ -135,42 +148,6 @@ export class AudioAnalyzer {
   }
 
   // ==================== Private Methods ====================
-
-  private spectrumLoop(timestamp: number): void {
-    if (!this._isRunning) return
-
-    // Throttle spectrum updates
-    if (timestamp - this.lastSpectrumTime >= this.spectrumIntervalMs) {
-      const spectrum = this.detector.getSpectrum()
-      const state = this.detector.getState()
-
-      if (spectrum) {
-        // Calculate peak level for metering
-        let peak = -100
-        for (let i = 0; i < spectrum.length; i++) {
-          if (spectrum[i] > peak) peak = spectrum[i]
-        }
-
-        const spectrumData: SpectrumData = {
-          freqDb: spectrum,
-          power: new Float32Array(0), // Not needed for display
-          noiseFloorDb: state.noiseFloorDb,
-          effectiveThresholdDb: state.effectiveThresholdDb,
-          sampleRate: state.sampleRate,
-          fftSize: state.fftSize,
-          timestamp,
-          peak,
-        }
-
-        this.callbacks.onSpectrum?.(spectrumData)
-      }
-
-      this.lastSpectrumTime = timestamp
-    }
-
-    this.rafId = requestAnimationFrame(this.spectrumLoop)
-  }
-
 }
 
 /**

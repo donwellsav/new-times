@@ -374,17 +374,41 @@ export function getGEQBandLabels(): string[] {
   })
 }
 
+// Cache resolved CSS variable values so getComputedStyle is only called once
+// per variable, not on every canvas frame for every advisory.
+const _cssColorCache = new Map<string, string>()
+
 /**
- * Get color for severity level
+ * Resolve a CSS variable color string (e.g. "var(--severity-runaway)") to its
+ * computed hex/rgb value so it can be used as a Canvas fillStyle/strokeStyle.
+ * Falls back to the input string if resolution fails (e.g. during SSR).
+ * Results are cached — getComputedStyle is only called once per variable.
+ */
+export function resolveCSSColor(cssVar: string): string {
+  if (typeof window === 'undefined') return cssVar
+  const cached = _cssColorCache.get(cssVar)
+  if (cached) return cached
+  const match = cssVar.match(/var\((--[^)]+)\)/)
+  if (!match) return cssVar
+  const resolved = getComputedStyle(document.documentElement).getPropertyValue(match[1]).trim() || cssVar
+  _cssColorCache.set(cssVar, resolved)
+  return resolved
+}
+
+/**
+ * Get color for severity level.
+ * Returns CSS variable references so the output always respects the active
+ * theme defined in globals.css (--severity-* tokens) rather than
+ * hard-coded hex values that bypass the design system.
  */
 export function getSeverityColor(severity: SeverityLevel): string {
   switch (severity) {
-    case 'RUNAWAY': return '#ef4444' // red-500
-    case 'GROWING': return '#f97316' // orange-500
-    case 'RESONANCE': return '#eab308' // yellow-500
-    case 'POSSIBLE_RING': return '#a855f7' // purple-500
-    case 'WHISTLE': return '#06b6d4' // cyan-500
-    case 'INSTRUMENT': return '#22c55e' // green-500
-    default: return '#6b7280' // gray-500
+    case 'RUNAWAY':      return 'var(--severity-runaway)'
+    case 'GROWING':      return 'var(--severity-growing)'
+    case 'RESONANCE':    return 'var(--severity-resonance)'
+    case 'POSSIBLE_RING': return 'var(--severity-ring)'
+    case 'WHISTLE':      return 'var(--severity-whistle)'
+    case 'INSTRUMENT':   return 'var(--severity-instrument)'
+    default:             return 'var(--muted-foreground)'
   }
 }

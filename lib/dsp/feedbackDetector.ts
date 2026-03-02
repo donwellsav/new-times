@@ -16,6 +16,9 @@ import { DEFAULT_CONFIG } from '@/types/advisory'
 export interface FeedbackDetectorCallbacks {
   onPeakDetected?: (peak: DetectedPeak) => void
   onPeakCleared?: (peak: { binIndex: number; frequencyHz: number; timestamp: number }) => void
+  /** Called on every RAF tick before analysis — used to deliver spectrum data
+   *  without a second competing requestAnimationFrame loop. */
+  onRafTick?: (timestamp: number) => void
 }
 
 export interface FeedbackDetectorState {
@@ -254,6 +257,10 @@ export class FeedbackDetector {
     }
     if (settings.feedbackThresholdDb !== undefined) {
       mappedConfig.relativeThresholdDb = settings.feedbackThresholdDb
+      // prominenceDb is tightly coupled to feedbackThresholdDb — a peak must
+      // stand out from its neighborhood by at least half the relative threshold.
+      // Without this mapping, the UI slider had no effect on actual detection.
+      mappedConfig.prominenceDb = Math.max(3, settings.feedbackThresholdDb * 0.5)
     }
     // NOTE: holdTimeMs is UI-side "how long to show advisory cards after peak clears"
     // clearMs is DSP-side "how long to wait before declaring a peak dead"
@@ -519,6 +526,10 @@ export class FeedbackDetector {
 
     const rafDt = this.lastRafTs === 0 ? 0 : timestamp - this.lastRafTs
     this.lastRafTs = timestamp
+
+    // Notify listeners on every tick (e.g. for spectrum display) —
+    // avoids a second competing RAF loop in the caller.
+    this.callbacks.onRafTick?.(timestamp)
 
     // Guard against throttling (background tab)
     if (rafDt > this.maxAnalysisGapMs) {

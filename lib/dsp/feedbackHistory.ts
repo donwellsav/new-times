@@ -79,7 +79,8 @@ export class FeedbackHistory {
   private startTime: number
   private events: FeedbackEvent[] = []
   private hotspots: Map<number, FrequencyHotspot> = new Map()
-  
+  private _saveTimer: ReturnType<typeof setTimeout> | null = null
+
   constructor() {
     this.sessionId = this.generateSessionId()
     this.startTime = Date.now()
@@ -236,18 +237,16 @@ export class FeedbackHistory {
     this.hotspots.clear()
     this.sessionId = this.generateSessionId()
     this.startTime = Date.now()
-    this.saveToStorage()
+    if (this._saveTimer !== null) { clearTimeout(this._saveTimer); this._saveTimer = null }
+    this._flushToStorage()
   }
 
-  /**
-   * Start a new session (preserves hotspot knowledge)
-   */
   startNewSession(): void {
     this.sessionId = this.generateSessionId()
     this.startTime = Date.now()
-    // Keep hotspots but clear events for new session
     this.events = []
-    this.saveToStorage()
+    if (this._saveTimer !== null) { clearTimeout(this._saveTimer); this._saveTimer = null }
+    this._flushToStorage()
   }
 
   // ==================== PRIVATE METHODS ====================
@@ -313,9 +312,19 @@ export class FeedbackHistory {
     hotspot.suggestedCutDb = Math.min(maxProminence * 1.5 + (hotspot.occurrences - 1) * 0.5, 12)
   }
 
+  /** Debounced save — coalesces rapid advisory bursts into a single write */
   private saveToStorage(): void {
     if (typeof window === 'undefined') return
-    
+    if (this._saveTimer !== null) clearTimeout(this._saveTimer)
+    this._saveTimer = setTimeout(() => {
+      this._saveTimer = null
+      this._flushToStorage()
+    }, 500)
+  }
+
+  /** Immediate write — use for clear/reset operations where data must persist now */
+  private _flushToStorage(): void {
+    if (typeof window === 'undefined') return
     try {
       const data = {
         sessionId: this.sessionId,
@@ -325,7 +334,6 @@ export class FeedbackHistory {
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
     } catch (e) {
-      // Storage full or unavailable - silently fail
       console.warn('[FeedbackHistory] Failed to save to localStorage:', e)
     }
   }

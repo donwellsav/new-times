@@ -326,12 +326,12 @@ export const DEFAULT_CONFIG: AnalysisConfig = {
   minHz: 200, // Vocal-focused lower bound
   maxHz: 8000, // Vocal-focused upper bound - where most speech feedback occurs
   analysisIntervalMs: 20, // Faster analysis for quicker detection
-  sustainMs: 250, // Faster confirmation for speech dynamics
+  sustainMs: 150, // Faster confirmation — was 250ms, too slow for live feedback
   clearMs: 400, // Faster clearing for responsive display
   thresholdMode: 'hybrid',
   thresholdDb: -40, // More sensitive absolute threshold
-  relativeThresholdDb: 18, // Slightly more sensitive relative threshold
-  prominenceDb: 12, // Lower prominence for catching subtle peaks
+  relativeThresholdDb: 10, // Lowered from 18 — peaks must be 10dB above noise floor (was 18dB, too high)
+  prominenceDb: 6, // Lowered from 12 — 6dB above neighborhood avg is enough to flag (was 12dB, missed real feedback)
   neighborhoodBins: 8, // ±2 exclusion means effective 6 each side
   maxIssues: 12, // Show more issues for comprehensive tuning
   ignoreWhistle: true,

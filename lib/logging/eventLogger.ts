@@ -128,20 +128,21 @@ export class EventLogger {
   exportAsCSV(): string {
     if (this.logs.length === 0) return 'No logs to export'
 
-    const headers = ['Timestamp', 'Type', 'Details']
+    // RFC 4180: wrap every cell in double-quotes and escape internal
+    // double-quotes by doubling them. This prevents CSV injection and
+    // correctly handles commas and newlines inside JSON detail values.
+    const escapeCell = (value: string): string =>
+      `"${value.replace(/"/g, '""')}"`
+
+    const headers = ['Timestamp', 'Type', 'Details'].map(escapeCell)
     const rows = this.logs.map(log => {
       const date = new Date(log.timestamp).toLocaleString()
       const type = log.type
       const details = JSON.stringify(log.data)
-      return [date, type, details]
+      return [date, type, details].map(escapeCell).join(',')
     })
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(',')),
-    ].join('\n')
-
-    return csvContent
+    return [headers.join(','), ...rows].join('\n')
   }
 
   exportAsText(): string {

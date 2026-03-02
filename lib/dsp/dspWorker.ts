@@ -59,14 +59,32 @@ export type WorkerOutboundMessage =
   | { type: 'error'; message: string }
 
 // ─── Worker state ────────────────────────────────────────────────────────────
+// All mutable state is encapsulated in WorkerState so there are no bare
+// module-level lets and no silent side-effects from processPeak overwriting
+// sampleRate/fftSize as an undocumented mutation.
 
-let settings: DetectorSettings = { ...DEFAULT_SETTINGS }
-let sampleRate = 48000
-let fftSize = 8192
+class WorkerState {
+  settings: DetectorSettings = { ...DEFAULT_SETTINGS }
+  sampleRate = 48000
+  fftSize = 8192
+  readonly trackManager = new TrackManager()
+  readonly advisories = new Map<string, Advisory>()
+  readonly trackToAdvisoryId = new Map<string, string>()
 
-const trackManager = new TrackManager()
-const advisories = new Map<string, Advisory>()
-const trackToAdvisoryId = new Map<string, string>()
+  reset() {
+    this.trackManager.clear()
+    this.advisories.clear()
+    this.trackToAdvisoryId.clear()
+  }
+
+  /** Called on init and whenever processPeak carries updated audio config. */
+  updateAudioConfig(sampleRate: number, fftSize: number) {
+    this.sampleRate = sampleRate
+    this.fftSize = fftSize
+  }
+}
+
+const state = new WorkerState()
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -83,10 +101,9 @@ function getSeverityUrgency(severity: string): number {
 }
 
 function isHarmonicOfExisting(freqHz: number, bandIndex: number): boolean {
-  // Use the same cents-based tolerance as FeedbackDetector to stay consistent.
-  const toleranceCents = settings.harmonicToleranceCents ?? 50
+  const toleranceCents = state.settings.harmonicToleranceCents ?? 50
   const MAX_HARMONIC = 8
-  for (const advisory of advisories.values()) {
+  for (const advisory of state.advisories.values()) {
     const fundamental = advisory.trueFrequencyHz
     if (fundamental >= freqHz) continue
     for (let n = 2; n <= MAX_HARMONIC; n++) {
@@ -104,8 +121,8 @@ function isHarmonicOfExisting(freqHz: number, bandIndex: number): boolean {
 const BEATING_THRESHOLD_HZ = 20 // Frequencies within 20Hz are perceptually beating
 
 function findDuplicateAdvisory(freqHz: number, bandIndex: number, excludeTrackId?: string): Advisory | null {
-  const mergeCents = settings.peakMergeCents
-  for (const advisory of advisories.values()) {
+  const mergeCents = state.settings.peakMergeCents
+  for (const advisory of state.advisories.values()) {
     if (excludeTrackId && advisory.trackId === excludeTrackId) continue
 
     // 1. Cents-based merge (widened to 100 cents = full 1/3 octave band)
@@ -129,90 +146,74 @@ self.onmessage = (event: MessageEvent<WorkerInboundMessage>) => {
 
   switch (msg.type) {
     case 'init': {
-      settings = { ...DEFAULT_SETTINGS, ...msg.settings }
-      sampleRate = msg.sampleRate
-      fftSize = msg.fftSize
-      trackManager.clear()
-      advisories.clear()
-      trackToAdvisoryId.clear()
+      state.settings = { ...DEFAULT_SETTINGS, ...msg.settings }
+      state.updateAudioConfig(msg.sampleRate, msg.fftSize)
+      state.reset()
       self.postMessage({ type: 'ready' } satisfies WorkerOutboundMessage)
       break
     }
 
     case 'updateSettings': {
-      settings = { ...settings, ...msg.settings }
+      state.settings = { ...state.settings, ...msg.settings }
       break
     }
 
     case 'reset': {
-      trackManager.clear()
-      advisories.clear()
-      trackToAdvisoryId.clear()
+      state.reset()
       break
     }
 
     case 'processPeak': {
       const { peak, spectrum, sampleRate: sr, fftSize: fft } = msg
-      sampleRate = sr
-      fftSize = fft
+      state.updateAudioConfig(sr, fft)
 
       // Process through track manager
-      const track = trackManager.processPeak(peak)
+      const track = state.trackManager.processPeak(peak)
 
       // Classify
-      const classification = classifyTrack(track, settings)
+      const classification = classifyTrack(track, state.settings)
 
       // Gate on reporting threshold
       // Note: only clean up internal state — do NOT send advisoryCleared to main thread.
       // Advisories persist on the main thread for the entire session until stop() is called.
-      if (!shouldReportIssue(classification, settings)) {
-        const existingId = trackToAdvisoryId.get(track.id)
+      if (!shouldReportIssue(classification, state.settings)) {
+        const existingId = state.trackToAdvisoryId.get(track.id)
         if (existingId) {
-          advisories.delete(existingId)
-          trackToAdvisoryId.delete(track.id)
-          // Do not postMessage advisoryCleared — issues persist until session ends
+          state.advisories.delete(existingId)
+          state.trackToAdvisoryId.delete(track.id)
         }
-        self.postMessage({ type: 'tracksUpdate', tracks: trackManager.getActiveTracks() } satisfies WorkerOutboundMessage)
+        self.postMessage({ type: 'tracksUpdate', tracks: state.trackManager.getActiveTracks() } satisfies WorkerOutboundMessage)
         break
       }
 
-      // Generate EQ advisory first — we need bandIndex for dedup checks
       const eqAdvisory = generateEQAdvisory(
         track,
         classification.severity,
-        settings.eqPreset,
+        state.settings.eqPreset,
         spectrum,
-        sampleRate,
-        fftSize
+        state.sampleRate,
+        state.fftSize
       )
 
-      // Skip harmonics (now band-aware)
       if (isHarmonicOfExisting(track.trueFrequencyHz, eqAdvisory.geq.bandIndex)) break
 
-      // Dedup within merge tolerance — check cents, band, and beating
-      // Severity ALWAYS wins: higher severity replaces lower, regardless of amplitude
-      const existingId = trackToAdvisoryId.get(track.id)
+      const existingId = state.trackToAdvisoryId.get(track.id)
       let inheritedClusterCount = 1
       if (!existingId) {
         const dup = findDuplicateAdvisory(track.trueFrequencyHz, eqAdvisory.geq.bandIndex, track.id)
         if (dup) {
           const existingUrgency = getSeverityUrgency(dup.severity)
           const newUrgency = getSeverityUrgency(classification.severity)
-          // Severity-first: higher urgency (lower number) always wins
-          // If same severity, higher amplitude wins
-          if (newUrgency > existingUrgency || 
+          if (newUrgency > existingUrgency ||
               (newUrgency === existingUrgency && track.trueAmplitudeDb <= dup.trueAmplitudeDb)) {
-            // Existing wins — increment its cluster count and skip this peak
             dup.clusterCount = (dup.clusterCount ?? 1) + 1
             self.postMessage({ type: 'advisory', advisory: dup } satisfies WorkerOutboundMessage)
             break
           }
-          // New peak wins — inherit cluster count, then send atomic replace after advisory is built
           inheritedClusterCount = (dup.clusterCount ?? 1) + 1
           const replacedId = dup.id
-          advisories.delete(dup.id)
-          trackToAdvisoryId.delete(dup.trackId)
-          // Build the winning advisory now and send as one atomic replace message below
+          state.advisories.delete(dup.id)
+          state.trackToAdvisoryId.delete(dup.trackId)
           const advisoryId = existingId ?? generateId()
           const advisory: Advisory = {
             id: advisoryId,
@@ -237,11 +238,10 @@ self.onmessage = (event: MessageEvent<WorkerInboundMessage>) => {
             frequencyBand: classification.frequencyBand,
             clusterCount: inheritedClusterCount,
           }
-          advisories.set(advisoryId, advisory)
-          if (!existingId) trackToAdvisoryId.set(track.id, advisoryId)
-          // Single atomic message — main thread removes old and inserts new in one state update
+          state.advisories.set(advisoryId, advisory)
+          if (!existingId) state.trackToAdvisoryId.set(track.id, advisoryId)
           self.postMessage({ type: 'advisoryReplaced', replacedId, advisory } satisfies WorkerOutboundMessage)
-          self.postMessage({ type: 'tracksUpdate', tracks: trackManager.getActiveTracks() } satisfies WorkerOutboundMessage)
+          self.postMessage({ type: 'tracksUpdate', tracks: state.trackManager.getActiveTracks() } satisfies WorkerOutboundMessage)
           break
         }
       }
@@ -265,29 +265,25 @@ self.onmessage = (event: MessageEvent<WorkerInboundMessage>) => {
         harmonicityScore: track.features.harmonicityScore,
         modulationScore: track.features.modulationScore,
         advisory: eqAdvisory,
-        // Enhanced detection fields from acoustic analysis
         modalOverlapFactor: classification.modalOverlapFactor,
         cumulativeGrowthDb: classification.cumulativeGrowthDb,
         frequencyBand: classification.frequencyBand,
-        // Cluster info — how many peaks were merged into this advisory
         clusterCount: inheritedClusterCount,
       }
 
-      advisories.set(advisoryId, advisory)
-      if (!existingId) trackToAdvisoryId.set(track.id, advisoryId)
+      state.advisories.set(advisoryId, advisory)
+      if (!existingId) state.trackToAdvisoryId.set(track.id, advisoryId)
 
       self.postMessage({ type: 'advisory', advisory } satisfies WorkerOutboundMessage)
-      self.postMessage({ type: 'tracksUpdate', tracks: trackManager.getActiveTracks() } satisfies WorkerOutboundMessage)
+      self.postMessage({ type: 'tracksUpdate', tracks: state.trackManager.getActiveTracks() } satisfies WorkerOutboundMessage)
       break
     }
 
     case 'clearPeak': {
       const { binIndex, timestamp } = msg
-      trackManager.clearTrack(binIndex, timestamp)
-      trackManager.pruneInactiveTracks(timestamp)
-      // Do not send advisoryCleared — issues persist on the main thread for the entire session.
-      // Internal advisory map is cleaned up above via pruneInactiveTracks.
-      self.postMessage({ type: 'tracksUpdate', tracks: trackManager.getActiveTracks() } satisfies WorkerOutboundMessage)
+      state.trackManager.clearTrack(binIndex, timestamp)
+      state.trackManager.pruneInactiveTracks(timestamp)
+      self.postMessage({ type: 'tracksUpdate', tracks: state.trackManager.getActiveTracks() } satisfies WorkerOutboundMessage)
       break
     }
   }

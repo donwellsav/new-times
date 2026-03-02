@@ -30,6 +30,85 @@ const GRAPH_CHIPS: { value: GraphView; label: string }[] = [
   { value: 'waterfall', label: 'WTF' },
 ]
 
+// ── GraphPanel ────────────────────────────────────────────────────────────────
+// Renders the chip switcher + the three graph layers for one panel slot.
+// Used for the main top panel and both bottom panels to eliminate duplication.
+interface GraphPanelProps {
+  activeGraph: GraphView
+  onGraphChange: (v: GraphView) => void
+  spectrumRef: React.MutableRefObject<import('@/types/advisory').SpectrumData | null>
+  /** spectrum state is still needed for the statusLabel noiseFloor readout */
+  spectrum: Parameters<typeof SpectrumCanvas>[0]['spectrum']
+  advisories: Advisory[]
+  isRunning: boolean
+  graphFontSize: number
+  chipPrefix: string
+  chipSize?: 'sm' | 'xs'
+  pointerEvents?: boolean
+  statusLabel?: string
+}
+
+const GraphPanel = memo(function GraphPanel({
+  activeGraph,
+  onGraphChange,
+  spectrumRef,
+  spectrum,
+  advisories,
+  isRunning,
+  graphFontSize,
+  chipPrefix,
+  chipSize = 'sm',
+  pointerEvents = true,
+  statusLabel,
+}: GraphPanelProps) {
+  const chipCls = chipSize === 'xs'
+    ? 'px-2 py-0.5 rounded-full text-[9px] font-medium border transition-colors whitespace-nowrap'
+    : 'px-2.5 py-0.5 rounded-full text-[10px] font-medium border transition-colors'
+
+  return (
+    <>
+      <div className="flex-shrink-0 flex items-center justify-between px-2 py-1 border-b border-border bg-muted/20 gap-2">
+        <div className="flex items-center gap-1 flex-wrap">
+          {GRAPH_CHIPS.map((chip) => (
+            <button
+              key={`${chipPrefix}-${chip.value}`}
+              onClick={() => onGraphChange(chip.value)}
+              className={`${chipCls} ${
+                activeGraph === chip.value
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-transparent text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
+              }`}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+        {statusLabel != null && (
+          <span className="text-[9px] sm:text-[10px] text-muted-foreground font-mono whitespace-nowrap flex-shrink-0">
+            {statusLabel}
+          </span>
+        )}
+      </div>
+      <div className={`relative flex-1 min-h-0 ${pointerEvents ? '' : 'pointer-events-none'}`}>
+        <div className={`absolute inset-0 transition-opacity duration-200 ${activeGraph === 'rta' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
+          <SpectrumCanvas spectrumRef={spectrumRef} spectrum={spectrum} advisories={advisories} isRunning={isRunning && activeGraph === 'rta'} graphFontSize={graphFontSize} />
+        </div>
+        <div className={`absolute inset-0 transition-opacity duration-200 ${activeGraph === 'geq' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
+          <GEQBarView advisories={activeGraph === 'geq' ? advisories : []} graphFontSize={graphFontSize} />
+        </div>
+        <div className={`absolute inset-0 transition-opacity duration-200 ${activeGraph === 'waterfall' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
+          <WaterfallCanvas spectrumRef={spectrumRef} spectrum={spectrum} isRunning={isRunning && activeGraph === 'waterfall'} graphFontSize={graphFontSize} />
+        </div>
+      </div>
+    </>
+  )
+})
+
+// Sidebar resize constants — module-level so they are never recreated on render
+const SIDEBAR_MIN = 180
+const SIDEBAR_MAX = 480
+const SIDEBAR_DEFAULT = 320
+
 export const KillTheRing = memo(function KillTheRingComponent() {
   // v3.0 Build Component
   const {
@@ -39,6 +118,7 @@ export const KillTheRing = memo(function KillTheRingComponent() {
     sampleRate,
     fftSize,
     spectrum,
+    spectrumRef,
     advisories,
     settings,
     start,
@@ -54,10 +134,6 @@ export const KillTheRing = memo(function KillTheRingComponent() {
   const [mobileShowGraph, setMobileShowGraph] = useState(false)
   const [activeSidebarTab, setActiveSidebarTab] = useState<'issues' | 'notepad'>('issues')
 
-// Sidebar resize constants — module-level so they are never recreated on render
-const SIDEBAR_MIN = 180
-const SIDEBAR_MAX = 480
-const SIDEBAR_DEFAULT = 320
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return SIDEBAR_DEFAULT
     const stored = localStorage.getItem('ktr-sidebar-width')
@@ -166,6 +242,11 @@ const SIDEBAR_DEFAULT = 320
   const logger = loggerRef.current
   const sessionIdRef = useRef<string | null>(null)
   const lastFlushedRef = useRef<number>(0)
+  // Keep a ref to settings so the session start/stop effect always reads the
+  // latest values without needing settings in its dependency array (which would
+  // create a new session every time a slider moves while running).
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
 
   const flushEventsToDB = useCallback(async (sessionId: string) => {
     const allLogs = loggerRef.current.getLogs()
@@ -192,11 +273,12 @@ const SIDEBAR_DEFAULT = 320
     return () => { document.body.style.overflow = '' }
   }, [mobileMenuOpen])
 
-  // Session start/stop effect - only depends on isRunning to prevent orphan sessions
-  // Settings changes while running should NOT create new sessions
+  // Session start/stop effect — only re-fires when isRunning toggles.
+  // Settings are read via settingsRef so slider changes while running never
+  // recreate the session. flushEventsToDB is stable (useCallback with no deps).
   useEffect(() => {
     if (isRunning) {
-      logger.logAnalysisStarted({ mode: settings.mode, fftSize: settings.fftSize })
+      logger.logAnalysisStarted({ mode: settingsRef.current.mode, fftSize: settingsRef.current.fftSize })
       const newId = crypto.randomUUID()
       lastFlushedRef.current = 0
       // Only register the session ID once the server confirms the session exists,
@@ -204,7 +286,7 @@ const SIDEBAR_DEFAULT = 320
       fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: newId, mode: settings.mode, fftSize: settings.fftSize }),
+        body: JSON.stringify({ id: newId, mode: settingsRef.current.mode, fftSize: settingsRef.current.fftSize }),
       })
         .then((res) => { if (res.ok) sessionIdRef.current = newId })
         .catch(() => {})
@@ -218,8 +300,7 @@ const SIDEBAR_DEFAULT = 320
         sessionIdRef.current = null
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only react to isRunning
-  }, [isRunning])
+  }, [isRunning, flushEventsToDB])
 
   useEffect(() => {
     if (!isRunning) return
@@ -619,39 +700,18 @@ const SIDEBAR_DEFAULT = 320
           {/* Top: Large active graph (~60% height) */}
           <div className="flex-[3] min-h-0 p-1.5 sm:p-2 md:p-3 pb-0.5 sm:pb-1">
             <div className="h-full bg-card/60 rounded-lg border border-border overflow-hidden flex flex-col">
-              <div className="flex-shrink-0 flex items-center justify-between px-2 py-1 border-b border-border bg-muted/20 gap-2">
-                <div className="flex items-center gap-1">
-                  {GRAPH_CHIPS.map((chip) => (
-                    <button
-                      key={chip.value}
-                      onClick={() => setActiveGraph(chip.value)}
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
-                        activeGraph === chip.value
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-transparent text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
-                      }`}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-                <span className="text-[9px] sm:text-[10px] text-muted-foreground font-mono whitespace-nowrap flex-shrink-0">
-                  {isRunning && spectrum?.noiseFloorDb != null
-                    ? `${spectrum.noiseFloorDb.toFixed(0)}dB`
-                    : 'Ready'}
-                </span>
-              </div>
-              <div className="relative flex-1 min-h-0">
-                <div className={`absolute inset-0 transition-opacity duration-200 ${activeGraph === 'rta' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
-                  <SpectrumCanvas spectrum={spectrum} advisories={advisories} isRunning={isRunning} graphFontSize={settings.graphFontSize} />
-                </div>
-                <div className={`absolute inset-0 transition-opacity duration-200 ${activeGraph === 'geq' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
-                  <GEQBarView advisories={advisories} graphFontSize={settings.graphFontSize} />
-                </div>
-                <div className={`absolute inset-0 transition-opacity duration-200 ${activeGraph === 'waterfall' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
-                  <WaterfallCanvas spectrum={spectrum} isRunning={isRunning} graphFontSize={settings.graphFontSize} />
-                </div>
-              </div>
+              <GraphPanel
+                activeGraph={activeGraph}
+                onGraphChange={setActiveGraph}
+                spectrumRef={spectrumRef}
+                spectrum={spectrum}
+                advisories={advisories}
+                isRunning={isRunning}
+                graphFontSize={settings.graphFontSize}
+                chipPrefix="top"
+                chipSize="sm"
+                statusLabel={isRunning && spectrum?.noiseFloorDb != null ? `${spectrum.noiseFloorDb.toFixed(0)}dB` : 'Ready'}
+              />
             </div>
           </div>
 
@@ -676,53 +736,33 @@ const SIDEBAR_DEFAULT = 320
           <div className="hidden landscape:flex flex-[2] min-h-0 gap-1.5 landscape:gap-2 p-1.5 landscape:p-3 pt-0.5 landscape:pt-1">
             {/* Bottom-Left Graph */}
             <div className="flex-1 bg-card/60 rounded-lg border border-border overflow-hidden flex flex-col min-w-0">
-              <div className="flex-shrink-0 px-2 py-1 border-b border-border bg-muted/20 flex items-center gap-1">
-                <div className="flex items-center gap-1 flex-wrap">
-                  {GRAPH_CHIPS.map((chip) => (
-                    <button
-                      key={`bottom-left-${chip.value}`}
-                      onClick={() => setBottomLeftGraph(chip.value)}
-                      className={`px-2 py-0.5 rounded-full text-[9px] font-medium border transition-colors whitespace-nowrap ${
-                        bottomLeftGraph === chip.value
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-transparent text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
-                      }`}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex-1 min-h-0 pointer-events-none">
-                {bottomLeftGraph === 'rta' && <SpectrumCanvas spectrum={spectrum} advisories={advisories} isRunning={isRunning} graphFontSize={Math.max(10, settings.graphFontSize - 4)} />}
-                {bottomLeftGraph === 'geq' && <GEQBarView advisories={advisories} graphFontSize={Math.max(10, settings.graphFontSize - 4)} />}
-                {bottomLeftGraph === 'waterfall' && <WaterfallCanvas spectrum={spectrum} isRunning={isRunning} graphFontSize={Math.max(10, settings.graphFontSize - 4)} />}
-              </div>
+              <GraphPanel
+                activeGraph={bottomLeftGraph}
+                onGraphChange={setBottomLeftGraph}
+                spectrumRef={spectrumRef}
+                spectrum={spectrum}
+                advisories={advisories}
+                isRunning={isRunning}
+                graphFontSize={Math.max(10, settings.graphFontSize - 4)}
+                chipPrefix="bottom-left"
+                chipSize="xs"
+                pointerEvents={false}
+              />
             </div>
             {/* Bottom-Right Graph */}
             <div className="flex-1 bg-card/60 rounded-lg border border-border overflow-hidden flex flex-col min-w-0">
-              <div className="flex-shrink-0 px-2 py-1 border-b border-border bg-muted/20 flex items-center gap-1">
-                <div className="flex items-center gap-1 flex-wrap">
-                  {GRAPH_CHIPS.map((chip) => (
-                    <button
-                      key={`bottom-right-${chip.value}`}
-                      onClick={() => setBottomRightGraph(chip.value)}
-                      className={`px-2 py-0.5 rounded-full text-[9px] font-medium border transition-colors whitespace-nowrap ${
-                        bottomRightGraph === chip.value
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-transparent text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
-                      }`}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex-1 min-h-0 pointer-events-none">
-                {bottomRightGraph === 'rta' && <SpectrumCanvas spectrum={spectrum} advisories={advisories} isRunning={isRunning} graphFontSize={Math.max(10, settings.graphFontSize - 4)} />}
-                {bottomRightGraph === 'geq' && <GEQBarView advisories={advisories} graphFontSize={Math.max(10, settings.graphFontSize - 4)} />}
-                {bottomRightGraph === 'waterfall' && <WaterfallCanvas spectrum={spectrum} isRunning={isRunning} graphFontSize={Math.max(10, settings.graphFontSize - 4)} />}
-              </div>
+              <GraphPanel
+                activeGraph={bottomRightGraph}
+                onGraphChange={setBottomRightGraph}
+                spectrumRef={spectrumRef}
+                spectrum={spectrum}
+                advisories={advisories}
+                isRunning={isRunning}
+                graphFontSize={Math.max(10, settings.graphFontSize - 4)}
+                chipPrefix="bottom-right"
+                chipSize="xs"
+                pointerEvents={false}
+              />
             </div>
           </div>
 

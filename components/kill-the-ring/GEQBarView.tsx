@@ -1,9 +1,6 @@
-'use client'
-
 import { useRef, useEffect, useCallback, useMemo } from 'react'
-import { useAnimationFrame } from '@/hooks/useAnimationFrame'
 import { ISO_31_BANDS } from '@/lib/dsp/constants'
-import { getSeverityColor } from '@/lib/dsp/eqAdvisor'
+import { getSeverityColor, resolveCSSColor } from '@/lib/dsp/eqAdvisor'
 import type { Advisory } from '@/types/advisory'
 
 interface GEQBarViewProps {
@@ -27,7 +24,7 @@ export function GEQBarView({ advisories, graphFontSize = 11 }: GEQBarViewProps) 
       if (!existing || advisory.advisory.geq.suggestedDb < existing.suggestedDb) {
         map.set(bandIndex, {
           suggestedDb: advisory.advisory.geq.suggestedDb,
-          color: getSeverityColor(advisory.severity),
+          color: resolveCSSColor(getSeverityColor(advisory.severity)),
           freq: advisory.trueFrequencyHz,
           clusterCount: existing ? existing.clusterCount + advisoryCluster : advisoryCluster,
         })
@@ -190,7 +187,20 @@ export function GEQBarView({ advisories, graphFontSize = 11 }: GEQBarViewProps) 
 
   }, [bandRecommendations, graphFontSize])
 
-  useAnimationFrame(render, true)
+  // GEQ only needs to redraw when advisories change — not at 60fps.
+  // We use useEffect to trigger a single repaint when bandRecommendations update.
+  useEffect(() => {
+    render()
+  }, [render])
+
+  // Also redraw on resize
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const observer = new ResizeObserver(() => render())
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [render])
 
   return (
     <div ref={containerRef} className="w-full h-full">

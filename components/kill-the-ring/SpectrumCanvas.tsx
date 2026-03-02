@@ -4,12 +4,15 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import Image from 'next/image'
 import { useAnimationFrame } from '@/hooks/useAnimationFrame'
 import { freqToLogPosition, clamp } from '@/lib/utils/mathHelpers'
-import { getSeverityColor } from '@/lib/dsp/eqAdvisor'
+import { getSeverityColor, resolveCSSColor } from '@/lib/dsp/eqAdvisor'
 import { formatFrequency } from '@/lib/utils/pitchUtils'
 import { CANVAS_SETTINGS, VIZ_COLORS } from '@/lib/dsp/constants'
 import type { SpectrumData, Advisory } from '@/types/advisory'
 
 interface SpectrumCanvasProps {
+  /** Direct ref to latest spectrum — read inside RAF without triggering re-renders */
+  spectrumRef?: React.MutableRefObject<SpectrumData | null>
+  /** spectrum state prop kept for SSR/placeholder logic only */
   spectrum: SpectrumData | null
   advisories: Advisory[]
   isRunning: boolean
@@ -18,7 +21,7 @@ interface SpectrumCanvasProps {
 
 const FREQ_LABELS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
 
-export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize = 11 }: SpectrumCanvasProps) {
+export function SpectrumCanvas({ spectrumRef, spectrum, advisories, isRunning, graphFontSize = 11 }: SpectrumCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const dimensionsRef = useRef({ width: 0, height: 0 })
@@ -67,7 +70,11 @@ export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize 
     const { width, height } = dimensionsRef.current
     if (width === 0 || height === 0) return
 
-    // Clear
+    // Read from ref if available (bypasses React state, no re-render needed)
+    const currentSpectrum = spectrumRef?.current ?? spectrum
+
+    // Reset transform before scaling — without this, ctx.scale accumulates on
+    // every RAF tick and the graph drifts/zooms away over time.
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
     ctx.clearRect(0, 0, width, height)
@@ -110,8 +117,8 @@ export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize 
     ctx.stroke()
 
     // Draw noise floor
-    if (spectrum?.noiseFloorDb !== null && spectrum?.noiseFloorDb !== undefined) {
-      const floorY = ((RTA_DB_MAX - spectrum.noiseFloorDb) / (RTA_DB_MAX - RTA_DB_MIN)) * plotHeight
+    if (currentSpectrum?.noiseFloorDb !== null && currentSpectrum?.noiseFloorDb !== undefined) {
+      const floorY = ((RTA_DB_MAX - currentSpectrum.noiseFloorDb) / (RTA_DB_MAX - RTA_DB_MIN)) * plotHeight
       ctx.strokeStyle = VIZ_COLORS.NOISE_FLOOR
       ctx.lineWidth = 1
       ctx.setLineDash([4, 4])
@@ -123,9 +130,9 @@ export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize 
     }
 
     // Draw spectrum
-    if (spectrum?.freqDb && spectrum.sampleRate && spectrum.fftSize) {
-      const freqDb = spectrum.freqDb
-      const hzPerBin = spectrum.sampleRate / spectrum.fftSize
+    if (currentSpectrum?.freqDb && currentSpectrum.sampleRate && currentSpectrum.fftSize) {
+      const freqDb = currentSpectrum.freqDb
+      const hzPerBin = currentSpectrum.sampleRate / currentSpectrum.fftSize
       const n = freqDb.length
 
       // Gradient fill
@@ -188,7 +195,7 @@ export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize 
       const db = advisory.trueAmplitudeDb
       const x = freqToLogPosition(freq, RTA_FREQ_MIN, RTA_FREQ_MAX) * plotWidth
       const y = ((RTA_DB_MAX - clamp(db, RTA_DB_MIN, RTA_DB_MAX)) / (RTA_DB_MAX - RTA_DB_MIN)) * plotHeight
-      const color = getSeverityColor(advisory.severity)
+      const color = resolveCSSColor(getSeverityColor(advisory.severity))
 
       // Vertical line
       ctx.strokeStyle = color
@@ -249,7 +256,8 @@ export function SpectrumCanvas({ spectrum, advisories, isRunning, graphFontSize 
 
   }, [spectrum, advisories, graphFontSize])
 
-  useAnimationFrame(render, isRunning || spectrum !== null)
+  // 24fps is plenty for spectrum display — halves GPU work vs 60fps
+  useAnimationFrame(render, isRunning || spectrum !== null, 24)
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
