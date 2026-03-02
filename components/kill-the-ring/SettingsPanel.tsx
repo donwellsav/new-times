@@ -242,6 +242,16 @@ export function SettingsPanel({
     }
   }
 
+  const handleClearSettingDefault = (key: string) => {
+    localStorage.removeItem(`ktr-setting-${key}`)
+    setSavedIndividualKeys((prev) => {
+      const next = new Set(prev)
+      next.delete(key)
+      return next
+    })
+    logger.logSettingsChanged({ action: `clear_setting_${key}` })
+  }
+
   // Helper to render setting-specific save button
   const renderSettingDefaultButton = (settingKey: string, settingValue: any) => {
     const isSaved = savedIndividualKeys.has(settingKey)
