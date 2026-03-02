@@ -594,6 +594,8 @@ export class FeedbackDetector {
     const dead = this.deadMs
     const active = this.active
 
+    if (!hold || !dead || !active) return
+
     for (let i = start; i <= end; i++) {
       const peakDb = freqDb[i]
       const leftDb = freqDb[i - 1]
