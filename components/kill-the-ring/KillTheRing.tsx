@@ -30,6 +30,11 @@ const GRAPH_CHIPS: { value: GraphView; label: string }[] = [
   { value: 'waterfall', label: 'WTF' },
 ]
 
+// Sidebar resize constants — module-level so they are never recreated on render
+const SIDEBAR_MIN = 180
+const SIDEBAR_MAX = 480
+const SIDEBAR_DEFAULT = 320
+
 export const KillTheRing = memo(function KillTheRingComponent() {
   // v3.0 Build Component
   const {
@@ -54,10 +59,6 @@ export const KillTheRing = memo(function KillTheRingComponent() {
   const [mobileShowGraph, setMobileShowGraph] = useState(false)
   const [activeSidebarTab, setActiveSidebarTab] = useState<'issues' | 'notepad'>('issues')
 
-// Sidebar resize constants — module-level so they are never recreated on render
-const SIDEBAR_MIN = 180
-const SIDEBAR_MAX = 480
-const SIDEBAR_DEFAULT = 320
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     if (typeof window === 'undefined') return SIDEBAR_DEFAULT
     const stored = localStorage.getItem('ktr-sidebar-width')
