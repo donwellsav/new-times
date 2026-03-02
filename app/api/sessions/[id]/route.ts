@@ -33,7 +33,7 @@ export async function PATCH(_req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const { allowed, retryAfterMs } = rateLimit(getClientIp(_req))
+  const { allowed, retryAfterMs } = await rateLimit(getClientIp(_req))
   if (!allowed) {
     return NextResponse.json(
       { error: 'Too many requests' },

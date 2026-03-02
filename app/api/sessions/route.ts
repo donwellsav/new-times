@@ -13,7 +13,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { allowed, retryAfterMs } = rateLimit(getClientIp(req))
+  const { allowed, retryAfterMs } = await rateLimit(getClientIp(req))
   if (!allowed) {
     return NextResponse.json(
       { error: 'Too many requests' },
