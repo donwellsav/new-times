@@ -1,5 +1,6 @@
 'use client'
 
+// SettingsPanel v3.2 - Analysis engine, display preferences, log export
 import { useState, useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
