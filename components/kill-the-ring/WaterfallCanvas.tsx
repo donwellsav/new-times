@@ -220,6 +220,7 @@ export function WaterfallCanvas({ spectrumRef, spectrum, isRunning, graphFontSiz
             src="/wtf-placeholder.jpg"
             alt="Waterfall placeholder"
             fill
+            loading="eager"
             className="object-cover object-center"
           />
           <div className="absolute inset-0 flex items-center justify-center">
