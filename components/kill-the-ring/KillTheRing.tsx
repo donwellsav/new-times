@@ -167,6 +167,11 @@ export const KillTheRing = memo(function KillTheRingComponent() {
   const logger = loggerRef.current
   const sessionIdRef = useRef<string | null>(null)
   const lastFlushedRef = useRef<number>(0)
+  // Keep a ref to settings so the session start/stop effect always reads the
+  // latest values without needing settings in its dependency array (which would
+  // create a new session every time a slider moves while running).
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
 
   const flushEventsToDB = useCallback(async (sessionId: string) => {
     const allLogs = loggerRef.current.getLogs()
@@ -193,11 +198,12 @@ export const KillTheRing = memo(function KillTheRingComponent() {
     return () => { document.body.style.overflow = '' }
   }, [mobileMenuOpen])
 
-  // Session start/stop effect - only depends on isRunning to prevent orphan sessions
-  // Settings changes while running should NOT create new sessions
+  // Session start/stop effect — only re-fires when isRunning toggles.
+  // Settings are read via settingsRef so slider changes while running never
+  // recreate the session. flushEventsToDB is stable (useCallback with no deps).
   useEffect(() => {
     if (isRunning) {
-      logger.logAnalysisStarted({ mode: settings.mode, fftSize: settings.fftSize })
+      logger.logAnalysisStarted({ mode: settingsRef.current.mode, fftSize: settingsRef.current.fftSize })
       const newId = crypto.randomUUID()
       lastFlushedRef.current = 0
       // Only register the session ID once the server confirms the session exists,
@@ -205,7 +211,7 @@ export const KillTheRing = memo(function KillTheRingComponent() {
       fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: newId, mode: settings.mode, fftSize: settings.fftSize }),
+        body: JSON.stringify({ id: newId, mode: settingsRef.current.mode, fftSize: settingsRef.current.fftSize }),
       })
         .then((res) => { if (res.ok) sessionIdRef.current = newId })
         .catch(() => {})
@@ -219,8 +225,7 @@ export const KillTheRing = memo(function KillTheRingComponent() {
         sessionIdRef.current = null
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only react to isRunning
-  }, [isRunning])
+  }, [isRunning, flushEventsToDB])
 
   useEffect(() => {
     if (!isRunning) return
