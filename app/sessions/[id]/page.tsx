@@ -24,7 +24,11 @@ const SEVERITY_COLORS: Record<string, string> = {
   unknown:    '#6b7280',
 }
 
-export async function generateMetadata({ params }: PageProps) {
+type Props = {
+  params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: Props) {
   const { id } = await params
   return {
     title: `Session ${id.slice(0, 8)} — Kill The Ring`,
@@ -32,7 +36,7 @@ export async function generateMetadata({ params }: PageProps) {
   }
 }
 
-export default async function SessionDetailPage({ params }: PageProps) {
+export default async function SessionDetailPage({ params }: Props) {
   const { id } = await params
 
   let session: Awaited<ReturnType<typeof getSession>>
