@@ -1,6 +1,7 @@
 'use client'
 
 // DetectionControls - handles mode selection, frequency range, and threshold settings
+// v3.1 - Fixed nested button hydration error: SaveButton moved outside dropdown buttons as siblings
 import React, { useState, useEffect, useRef } from 'react'
 import { HelpCircle, ChevronDown, Download, X } from 'lucide-react'
 import { Slider } from '@/components/ui/slider'
