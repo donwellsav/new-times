@@ -1,0 +1,57 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.killthering.app",
+  "productName": "Kill The Ring",
+  "directories": {
+    "output": "dist",
+    "buildResources": "electron/resources"
+  },
+  "files": [
+    "out/**/*",
+    "electron/**/*",
+    "!node_modules/**/*"
+  ],
+  "mac": {
+    "category": "public.app-category.music",
+    "icon": "electron/resources/icon.icns",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "electron/entitlements.mac.plist",
+    "entitlementsInherit": "electron/entitlements.mac.plist",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ]
+  },
+  "win": {
+    "icon": "electron/resources/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "linux": {
+    "icon": "electron/resources/icon.png",
+    "category": "Audio",
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "installerIcon": "electron/resources/icon.ico",
+    "uninstallerIcon": "electron/resources/icon.ico"
+  }
+}

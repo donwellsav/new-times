@@ -1,0 +1,38 @@
+{
+  "name": "Kill The Ring - Feedback Detector",
+  "short_name": "Kill The Ring",
+  "description": "Real-time acoustic feedback detection and EQ advisory for live sound engineers",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "music", "productivity"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Start Detection",
+      "url": "/",
+      "description": "Start real-time feedback detection"
+    },
+    {
+      "name": "View Sessions",
+      "url": "/sessions",
+      "description": "View saved detection sessions"
+    }
+  ]
+}
