@@ -80,7 +80,7 @@ export async function getSession(id: string): Promise<Session | null> {
 // ─── Events ───────────────────────────────────────────────────────────────────
 
 export interface SessionEventRow {
-  id: string
+  id: number
   session_id: string
   occurred_at: string
   event_type: string
@@ -92,6 +92,7 @@ export interface SessionEventRow {
   bandwidth: number | null
   growth_rate: number | null
   metadata: Record<string, unknown> | null
+  note: string | null
 }
 
 export async function bulkInsertEvents(
@@ -111,7 +112,6 @@ export async function bulkInsertEvents(
     const d = ev.data as Record<string, unknown>
     const isIssue = ev.type === 'issue_detected'
     return {
-      id: ev.id,
       session_id: sessionId,
       occurred_at: new Date(ev.timestamp).toISOString(),
       event_type: ev.type,
@@ -127,29 +127,27 @@ export async function bulkInsertEvents(
   })
 
   // Build a single multi-row INSERT — one DB round-trip regardless of batch size.
-  // The neon client supports sql(queryString, params[]) as an alternative to tagged templates,
-  // which lets us construct dynamic parameter placeholders safely.
-  const COL_COUNT = 12
+  // id is omitted — the BIGSERIAL column auto-generates it.
+  const COL_COUNT = 11
   const placeholders = rows
     .map((_, i) => {
       const b = i * COL_COUNT
-      return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12})`
+      return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11})`
     })
     .join(',\n')
 
   const values = rows.flatMap((r) => [
-    r.id, r.session_id, r.occurred_at, r.event_type,
+    r.session_id, r.occurred_at, r.event_type,
     r.frequency, r.amplitude, r.severity, r.classification,
     r.q_factor, r.bandwidth, r.growth_rate, r.metadata,
   ])
 
   await sql.query(
     `INSERT INTO session_events (
-       id, session_id, occurred_at, event_type,
+       session_id, occurred_at, event_type,
        frequency, amplitude, severity, classification,
        q_factor, bandwidth, growth_rate, metadata
-     ) VALUES ${placeholders}
-     ON CONFLICT (id) DO NOTHING`,
+     ) VALUES ${placeholders}`,
     values,
   )
 }
