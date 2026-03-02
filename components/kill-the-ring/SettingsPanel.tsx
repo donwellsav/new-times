@@ -254,7 +254,7 @@ export function SettingsPanel({
   }
 
   // Helper to render setting-specific save button
-  const renderSettingDefaultButton = (settingKey: string, settingValue: any) => {
+  const renderSettingDefaultButton = (settingKey: string, settingValue: unknown) => {
     const isSaved = savedIndividualKeys.has(settingKey)
     return (
       <div className="flex gap-1">
